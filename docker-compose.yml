@@ -1,0 +1,41 @@
+# docker-compose.yml - Análise Estatística TCC
+# Tecnologias de Conteinerização: Curva de Aprendizagem Organizacional
+#
+# Autor: Guilherme Magalhães Leite
+# Instituição: MBA USP/ESALQ - Engenharia de Software
+
+version: '3.8'
+
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tcc-analise-estatistica
+    ports:
+      - "8888:8888"
+    volumes:
+      # Monta diretório raiz do projeto
+      - .:/app
+      # Volume nomeado para resultados
+      - resultados:/app/resultados
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - tcc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  resultados:
+    driver: local
+
+networks:
+  tcc-network:
+    driver: bridge

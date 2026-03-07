@@ -1,0 +1,24 @@
+# Requirements.txt - Análise Estatística TCC
+# Tecnologias de Conteinerização: Curva de Aprendizagem Organizacional
+
+# Core Data Science
+pandas==2.1.4
+numpy==1.26.2
+
+# Visualização
+matplotlib==3.8.2
+seaborn==0.13.0
+
+# Estatística
+scipy==1.11.4
+
+# ANACOR (Análise de Correspondência)
+prince==0.13.0
+
+# Regressão Logística
+statsmodels==0.14.1
+
+# Jupyter Notebook
+jupyter==1.0.0
+notebook==7.0.6
+ipykernel==6.27.1
