@@ -121,8 +121,4 @@ jupyter notebook
 
 ---
 
-## Licença
-
 Uso acadêmico - TCC MBA USP/ESALQ
-# tcc-analise-adocao-containers
-# tcc-analise-adocao-containers
