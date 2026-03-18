@@ -44,6 +44,10 @@ COPY . .
 # Criar diretórios necessários
 RUN mkdir -p resultados/graficos resultados/tabelas resultados/relatorios
 
+# Copiar configurações customizadas do Jupyter
+RUN mkdir -p /root/.jupyter/custom
+COPY .jupyter/custom/custom.css /root/.jupyter/custom/
+
 # Expor porta do Jupyter Notebook
 EXPOSE 8888
 

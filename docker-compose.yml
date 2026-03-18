@@ -17,8 +17,6 @@ services:
     volumes:
       # Monta diretório raiz do projeto
       - .:/app
-      # Volume nomeado para resultados
-      - resultados:/app/resultados
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - PYTHONUNBUFFERED=1
@@ -31,10 +29,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-volumes:
-  resultados:
-    driver: local
 
 networks:
   tcc-network:
