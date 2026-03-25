@@ -1,0 +1,40 @@
+# .dockerignore - Arquivos a ignorar no build do Docker
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git
+.git/
+.gitignore
+
+# Dados de teste
+dados/respostas_simuladas.csv
+
+# Temporários
+*.log
+*.tmp
+*.bak

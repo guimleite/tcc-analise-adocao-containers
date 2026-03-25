@@ -1,0 +1,23 @@
+/* Custom CSS para JupyterLab - Expandir células de output automaticamente */
+
+/* Remove altura máxima das células de output */
+.jp-OutputArea-child {
+    max-height: none !important;
+}
+
+.jp-OutputArea-output {
+    max-height: none !important;
+    overflow-y: visible !important;
+}
+
+/* Remove scroll das células */
+.jp-OutputArea {
+    max-height: none !important;
+}
+
+/* Ajusta tabelas para ficarem mais visíveis */
+.dataframe {
+    display: block !important;
+    overflow-x: auto !important;
+    max-height: none !important;
+}
