@@ -20,7 +20,6 @@ import seaborn as sns
 from scipy.stats import chi2_contingency, fisher_exact
 import prince
 from statsmodels.discrete.discrete_model import Logit
-from statsmodels.stats.multitest import multipletests
 import statsmodels.api as sm
 import csv
 import os
@@ -354,8 +353,10 @@ MAPA_Q7_SETOR = {
     'E-commerce/Varejo': 'E-commerce/Varejo',
     'Saúde/HealthTech': 'Saúde/HealthTech',
     'Educação/EdTech': 'Educação/EdTech',
+    'Cloud': 'Software/SaaS',
+    'Venture Capital': 'Fintech/Serviços Financeiros',
     'Consultoria': 'Consultoria/TI',
-    'consultoria': 'Consultoria/TI',
+    'Consultoria de tecnologia': 'Consultoria/TI',
     'AWS Partner, foco em migrações cloud.': 'Consultoria/TI',
     'Mídia/Entretenimento': 'Mídia/Games',
     'jogos': 'Mídia/Games',
@@ -373,6 +374,7 @@ MAPA_Q7_MACRO = {
     'E-commerce/Varejo': 'Indústria, Logística e Varejo',
     'Telecom': 'Telecom e Mídia',
     'Mídia/Games': 'Telecom e Mídia',
+    'Outros': 'Outros',
 }
 
 # Q18: principal desafio (16 -> 12 -> 8)
@@ -401,6 +403,7 @@ MAPA_Q18_MACRO = {
     'Integração com sistemas legados': 'Legado/Migração',
     'CI/CD (automação, fluxos de deploy)': 'CI/CD',
     'Sem desafio relevante': 'Sem desafio relevante',
+    'Outros': 'Outros',
 }
 
 # Q22: fonte mais útil (10 -> 5)
@@ -442,15 +445,25 @@ MAPA_Q26_MACRO = {
 }
 
 
-def _aplicar_mapa(df, origem, destino, mapa, rotulo, avisos):
-    """Aplica um mapeamento categórico registrando respostas não previstas."""
+def _normalizar(texto):
+    return str(texto).strip().casefold()
+
+
+def _aplicar_mapa(df, origem, destino, mapa, rotulo, avisos, padrao=None):
+    """Aplica um mapeamento categórico ignorando caixa e espaços nas pontas.
+    Respostas fora do mapa recebem `padrao`, se informado, e são registradas em avisos."""
     if origem not in df.columns:
         avisos.append(f"coluna '{origem}' ausente; '{destino}' não foi criada")
         return
-    df[destino] = df[origem].map(mapa)
-    orfas = df.loc[df[origem].notna() & df[destino].isna(), origem].unique()
-    if len(orfas):
-        avisos.append(f"{rotulo}: {len(orfas)} resposta(s) sem mapeamento -> {list(orfas)}")
+    chaves = {_normalizar(k): v for k, v in mapa.items()}
+    df[destino] = df[origem].map(lambda v: chaves.get(_normalizar(v)) if pd.notna(v) else None)
+    orfas = df[origem].notna() & df[destino].isna()
+    if orfas.any():
+        avisos.append(f"{rotulo}: {orfas.sum()} resposta(s) sem mapeamento -> "
+                      f"{list(df.loc[orfas, origem].unique())}"
+                      + (f" (atribuídas a '{padrao}')" if padrao else " (ficaram vazias)"))
+        if padrao:
+            df.loc[orfas, destino] = padrao
 
 
 def consolidar_categorias(df, verbose=True):
@@ -458,9 +471,11 @@ def consolidar_categorias(df, verbose=True):
     df = df.copy()
     avisos = []
 
-    _aplicar_mapa(df, 'q1_cargo', 'q1_cargo_c', MAPA_Q1_CARGO, 'Q1 cargo', avisos)
+    # respostas do campo "Outro" sem mapeamento vão para 'Outros' nas variáveis
+    # descritivas; em fonte e fator ficam vazias, pois entram nos testes
+    _aplicar_mapa(df, 'q1_cargo', 'q1_cargo_c', MAPA_Q1_CARGO, 'Q1 cargo', avisos, 'Outros')
     _aplicar_mapa(df, 'q1_cargo_c', 'q1_cargo_macro', MAPA_Q1_MACRO, 'Q1 macro', avisos)
-    _aplicar_mapa(df, 'q7_setor', 'q7_setor_c', MAPA_Q7_SETOR, 'Q7 setor', avisos)
+    _aplicar_mapa(df, 'q7_setor', 'q7_setor_c', MAPA_Q7_SETOR, 'Q7 setor', avisos, 'Outros')
     _aplicar_mapa(df, 'q7_setor_c', 'q7_setor_macro', MAPA_Q7_MACRO, 'Q7 macro', avisos)
     _aplicar_mapa(df, 'q22_fonte_mais_util', 'q22_fonte_c', MAPA_Q22_FONTE, 'Q22 fonte', avisos)
     _aplicar_mapa(df, 'q22_fonte_c', 'q22_fonte_3', MAPA_Q22_FONTE3, 'Q22 fonte-3', avisos)
@@ -471,7 +486,7 @@ def consolidar_categorias(df, verbose=True):
     if 'q18_principal_desafio' in df.columns:
         df['q18_desafio_c'] = df['q18_principal_desafio'].replace(MAPA_Q18_DESAFIO)
         _aplicar_mapa(df, 'q18_desafio_c', 'q18_desafio_macro', MAPA_Q18_MACRO,
-                      'Q18 macro', avisos)
+                      'Q18 macro', avisos, 'Outros')
 
     if verbose:
         titulo_secao("Consolidação de categorias")
@@ -537,6 +552,7 @@ CERTIFICACOES_LIVRES_VALIDAS = [
     'Linux Professional Institute LPIC-3 Virtualization and Containerization',
     'LPI',
     'LPIC-2',
+    'KCNA',
 ]
 
 
@@ -679,11 +695,12 @@ def preparar_variaveis(df, verbose=True):
         criadas.append('perfil_desafio')
 
         # 3 níveis: atende à premissa das frequências esperadas na ANACOR
-        # rótulos iguais aos usados no texto do TCC
+        # rótulos iguais aos usados no texto do TCC (autoexplicativos no mapa)
         df['perfil_desafio_3'] = df['perfil_desafio'].replace({
             'CI/CD + Complexidade': 'CI/CD alto',
             'CI/CD': 'CI/CD alto',
-            'Complexidade': 'Apenas complexidade alta'})
+            'Complexidade': 'Complexidade alta, CI/CD não',
+            'Baixo desafio': 'Nenhum dos dois alto'})
         criadas.append('perfil_desafio_3')
 
     # corte alternativo que isola o primeiro mês, equilibrando os grupos
@@ -793,9 +810,8 @@ def teste_qui_quadrado(df, var1, var2, nome_teste="Teste Qui-Quadrado",
     }
 
 
-def bateria_qui_quadrado(df, pares, alpha=0.05, metodo_correcao='fdr_bh',
-                         exibir_tabelas=False):
-    """Roda a bateria de testes e aplica correção para comparações múltiplas."""
+def bateria_qui_quadrado(df, pares, alpha=0.05, exibir_tabelas=False):
+    """Roda a bateria de testes e resume os resultados em uma tabela."""
     resultados = {}
     linhas = []
 
@@ -810,31 +826,13 @@ def bateria_qui_quadrado(df, pares, alpha=0.05, metodo_correcao='fdr_bh',
         resultados[(var1, var2)] = r
         r['rotulo'] = rotulo
         r['p_referencia'] = r['p_fisher'] if r['p_fisher'] is not None else r['p_value']
+        r['significativo'] = r['premissa_ok'] and r['p_referencia'] < alpha
         linhas.append(r)
-
-    # corrige só os testes válidos: incluir os inválidos distorceria a correção
-    validos = [r for r in linhas if r['premissa_ok']]
-
-    if validos:
-        ps = [r['p_referencia'] for r in validos]
-        rejeitados, p_ajustados, _, _ = multipletests(ps, alpha=alpha,
-                                                      method=metodo_correcao)
-        for r, pa, rej in zip(validos, p_ajustados, rejeitados):
-            r['p_ajustado'] = float(pa)
-            r['significativo'] = bool(rej)
-            # significativo antes da correção mas não depois = indício
-            r['indicio'] = (not rej) and r['p_referencia'] < alpha
-
-    for r in linhas:
-        if not r['premissa_ok']:
-            r['p_ajustado'] = np.nan
-            r['significativo'] = False
-            r['indicio'] = False
 
     def _classificar(r):
         if not r['premissa_ok']:
             return 'não interpretável'
-        return 'sim' if r['significativo'] else ('indício' if r['indicio'] else 'não')
+        return 'sim' if r['significativo'] else 'não'
 
     resumo = pd.DataFrame([{
         'Teste': r['rotulo'],
@@ -844,14 +842,13 @@ def bateria_qui_quadrado(df, pares, alpha=0.05, metodo_correcao='fdr_bh',
         'Qui-quadrado': round(r['chi2'], 3),
         'V de Cramér': round(r['cramers_v'], 3),
         'p': round(r['p_referencia'], 4),
-        'p ajustado': (round(r['p_ajustado'], 4)
-                       if not np.isnan(r['p_ajustado']) else '-'),
         'Premissa': 'OK' if r['premissa_ok'] else 'violada',
         'Significativo': _classificar(r),
     } for r in linhas])
 
-    titulo_secao(f"Resumo da bateria ({len(linhas)} testes, correção {metodo_correcao})")
-    print(f"\nPremissa atendida em {len(validos)}/{len(linhas)}. "
+    validos = sum(r['premissa_ok'] for r in linhas)
+    titulo_secao(f"Resumo da bateria ({len(linhas)} testes)")
+    print(f"\nPremissa atendida em {validos}/{len(linhas)}. "
           f"Em 2x2 o p é o do Fisher exato.\n")
     display(resumo.style.hide(axis='index')
             .set_properties(**{'text-align': 'left'})
@@ -862,22 +859,83 @@ def bateria_qui_quadrado(df, pares, alpha=0.05, metodo_correcao='fdr_bh',
                 {'selector': 'td', 'props': [('border', '1px solid black')]}
             ]))
 
-    sig = [r for r in linhas if r['significativo']]
-    ind = [r for r in linhas if r['indicio']]
+    achados = [r for r in linhas if r['significativo']]
+    print(f"\nACHADOS: {len(achados)}")
+    for r in achados:
+        print(f"  {r['rotulo']}: p = {r['p_referencia']:.4f} | V = {r['cramers_v']:.3f}")
 
-    for rotulo, grupo in [("ACHADOS", sig), ("INDÍCIOS (não sobrevivem à correção)", ind)]:
-        print(f"\n{rotulo}: {len(grupo)}")
-        for r in grupo:
-            print(f"  {r['rotulo']}: p = {r['p_referencia']:.4f} | "
-                  f"ajustado = {r['p_ajustado']:.4f} | V = {r['cramers_v']:.3f}")
-
-    return {'resultados': resultados, 'resumo': resumo,
-            'achados': sig, 'indicios': ind}
+    return {'resultados': resultados, 'resumo': resumo, 'achados': achados}
 
 
 # ============================================================================
 # ANACOR (ANÁLISE DE CORRESPONDÊNCIA)
 # ============================================================================
+
+# nomes em português das variáveis usadas na ANACOR, para legendas de figura
+NOMES_VARIAVEIS = {
+    'perfil_desafio_3': 'Perfil de desafio',
+    'q25_faixa_deploy': 'Tempo da equipe até a produção',
+    'q6_porte_empresa': 'Porte da empresa',
+    'q18_desafio_macro': 'Principal desafio',
+    'q22_fonte_c': 'Fonte de aprendizado mais útil',
+    'q22_fonte_3': 'Fonte de aprendizado mais útil',
+    'faixa_tempo_individual': 'Tempo individual de aprendizado',
+    'q26_fator_macro': 'Fator acelerador',
+}
+
+
+# deslocamento (pontos) e alinhamento do rótulo de cada categoria no mapa;
+# usado para afastar rótulos de pontos muito próximos (que é o próprio achado)
+DESLOC_ROTULOS_ANACOR = {
+    'CI/CD alto': (-8, -4, 'right', 'top'),
+    'Mais de 3 meses': (8, 6, 'left', 'bottom'),
+    'Nenhum dos dois alto': (8, 6, 'left', 'bottom'),
+    'Menos de 1 mês': (0, -8, 'center', 'top'),
+    '1 a 3 meses': (0, 8, 'center', 'bottom'),
+    'Complexidade alta, CI/CD não': (0, 8, 'center', 'bottom'),
+}
+
+
+def mapa_perceptual_tcc(coord_linhas, coord_colunas, pct_variancia, caminho,
+                        legenda_linhas, legenda_colunas, rotulos=None):
+    """Mapa perceptual da ANACOR no formato do manual (Tabela 8): sem título,
+    grade ou fundo; eixos pretos; marcadores legíveis em preto e branco;
+    proporção 1:1 entre as dimensões; vírgula decimal. rotulos: dict para
+    renomear categorias."""
+    from matplotlib.ticker import FuncFormatter
+    rotulos = rotulos or {}
+    fig, ax = plt.subplots(figsize=(6.3, 4.2))
+    # linhas de origem finas (referência, não grade)
+    ax.axhline(0, color='black', linewidth=0.6)
+    ax.axvline(0, color='black', linewidth=0.6)
+
+    ax.scatter(coord_linhas[0], coord_linhas[1], s=70, c='black', marker='o',
+               zorder=3, label=legenda_linhas)
+    ax.scatter(coord_colunas[0], coord_colunas[1], s=70, facecolors='white',
+               edgecolors='black', linewidth=1.2, marker='s', zorder=3, label=legenda_colunas)
+
+    for coords, padrao in ((coord_linhas, (0, 7, 'center', 'bottom')),
+                           (coord_colunas, (0, -7, 'center', 'top'))):
+        for nome, (x, y) in zip(coords.index, coords[[0, 1]].values):
+            texto = rotulos.get(nome, nome)
+            dx, dy, ha, va = DESLOC_ROTULOS_ANACOR.get(texto, padrao)
+            ax.annotate(texto, (x, y), xytext=(dx, dy), textcoords='offset points',
+                        fontsize=9, ha=ha, va=va)
+
+    pct = [f"{p:.1f}".replace('.', ',') for p in pct_variancia[:2]]
+    formatar_grafico_tcc(ax, f'Dimensão 1 ({pct[0]}% da inércia)',
+                         f'Dimensão 2 ({pct[1]}% da inércia)', fonte=9)
+    virgula = FuncFormatter(lambda v, _: f"{v:.1f}".replace('.', ',').replace('-', '−'))
+    ax.xaxis.set_major_formatter(virgula)
+    ax.yaxis.set_major_formatter(virgula)
+    ax.set_aspect('equal', adjustable='datalim')
+    ax.margins(0.25)
+    ax.legend(loc='upper left', fontsize=8, frameon=False)
+
+    fig.savefig(caminho, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    print(f"Figura (formato TCC) salva: {caminho}")
+
 
 def anacor(df, var1, var2, nome_analise="ANACOR", salvar_grafico=True):
     """Gera o mapa perceptual bidimensional do par informado."""
@@ -962,6 +1020,15 @@ def anacor(df, var1, var2, nome_analise="ANACOR", salvar_grafico=True):
         print(f"\nGráfico salvo: {nome_arquivo}")
 
     plt.show()
+
+    if salvar_grafico:
+        # versão para o documento, no formato do manual (prefixo "figura")
+        mapa_perceptual_tcc(
+            coord_linhas, coord_colunas, pct_variancia,
+            f"../resultados/graficos/anacor/figura_anacor_{var1}_{var2}.png",
+            legenda_linhas=NOMES_VARIAVEIS.get(var1, var1),
+            legenda_colunas=NOMES_VARIAVEIS.get(var2, var2),
+            rotulos={'1-3 meses': '1 a 3 meses'})
 
     return {
         'ca_model': ca,
